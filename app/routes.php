@@ -357,6 +357,13 @@ Route::group( array('prefix' => 'data/xAPI', 'before'=>'auth.statement'), functi
     'uses' => 'Controllers\xAPI\StatementController@selectMethod',
     'as' => 'xapi.statement'
   ]);
+  
+  // BEGIN - Remove me after error is fixed in easygenerator with double slash before statements (https://host//statements)
+  Route::any('/{nothing}/statements', [
+    'uses' => 'Controllers\xAPI\StatementController@selectMethod',
+    'as' => 'xapi.statement'
+  ])->where('nothing', '(.*)');
+  // END - Remove me after error is fixed in easygenerator with double slash before statements (https://host//statements)
 
   // Agent API.
   Route::any('agents/profile', [
@@ -446,6 +453,39 @@ Route::group( array('prefix' => 'api/v1', 'before'=>'auth.statement'), function(
 
 });
 
+
+/*
+|------------------------------------------------------------------
+| Admin RESTful API
+|------------------------------------------------------------------
+*/
+
+Route::group( array('prefix' => 'adminapi/v1'), function(){
+
+    Config::set('adminapi.using_version', 'v1');
+    
+    Route::get('/', function() {
+        return Response::json( array( 'scopes' =>'admin', 'version' => Config::get('adminapi.using_version')));
+    });
+    
+    //LRS
+    Route::get('lrs/list', [
+        'uses' => 'Controllers\adminAPI\Lrs@index'
+    ]);
+    Route::get('lrs/{id}', [
+        'uses' => 'Controllers\adminAPI\Lrs@getById'
+    ]);
+    Route::POST('lrs/store', [
+        'uses' => 'Controllers\adminAPI\Lrs@store'
+    ]);
+    Route::get('lrs/{id}/client/manage', [
+        'uses' => 'Controllers\adminAPI\Client@manage'
+    ]);
+    Route::get('lrs/{id}/client/list', [
+        'uses' => 'Controllers\adminAPI\Client@clients'
+    ]);
+});
+
 /*
 |----------------------------------------------------------------------
 | oAuth handling
@@ -458,6 +498,14 @@ Route::post('oauth/access_token', function() {
   return $bridgedResponse;
 });
 
+//Add OPTIONS routes for all defined xAPI and api routes
+foreach( Route::getRoutes()->getIterator() as $route  ){
+  if( $route->getPrefix() === 'data/xAPI' || $route->getPrefix() === 'api/v1' ){
+    Route::options($route->getUri(), 'Controllers\API\Base@CORSOptions');
+  }
+}
+
+
 /*
 |------------------------------------------------------------------
 | For routes that don't exist
@@ -465,7 +513,7 @@ Route::post('oauth/access_token', function() {
 */
 App::missing(function($exception){
 
-  if ( Request::segment(1) == "data" || Request::segment(1) == "api" ) {
+  if ( Request::segment(1) == "data" || Request::segment(1) == "api" || Request::segment(1) == "adminapi" ) {
     $error = array(
       'error'     =>  true,
       'message'   =>  $exception->getMessage(),
@@ -482,7 +530,7 @@ App::error(function(Exception $exception) {
   Log::error($exception);
   $code = method_exists($exception, 'getStatusCode') ? $exception->getStatusCode() : 500;
 
-  if (Request::segment(1) == "data" || Request::segment(1) == "api") {
+  if (Request::segment(1) == "data" || Request::segment(1) == "api" || Request::segment(1) == "adminapi") {
     return Response::json([
       'error' => true,
       'success' => false,
